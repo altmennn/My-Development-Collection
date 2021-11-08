@@ -1,0 +1,32 @@
+ From 2013/08/25Burkhard Stubert	
+ https://embeddeduse.com/2013/08/25/casting-a-negative-float-to-an-unsigned-int/
+ 
+
+… is a very bad idea. The result of the cast differs depending on whether the cast is executed on a device with Intel or ARM architecture. The C++ Standard decrees that the result of such a cast is undefined.
+
+When we run the two lines of code
+
+float f = -5.33;
+unsigned int n = static_cast<unsigned int>(f);
+
+on a device with Intel architecture, n has the value 4294967291, which is equivalent to 2 ^ 32 – 5. The two’s complement representation of -5 for 32 bits was the result desired by the code author.
+When we run these two lines of code on a device with ARM architecture, however, n has the value 0. Actually, every negative floating point number less than or equal to -1 comes out as 0. By the way, the result is the same if we remove the static_cast. Then, the conversion is done implicitly.
+A post at StackOverflow points us to Section 6.3.1.4 Real floating and integer of the C++ Standard for an explanation to our problem:
+
+    The remaindering operation performed when a value of integer type is converted to unsigned type need not be performed when a value of real floating type is converted to unsigned type. Thus, the range of portable real floating values is (−1, Utype_MAX+1). 
+
+In other words, the two’s complement of a negative float need not be computed. The safe range for casting a negative float to an unsigned int is from -1 to the maximum integer number that can be represented by this unsigned integer type.
+A possible solution of our problem is to cast the floating point number to a signed integer number first and then to an unsigned integer number.
+
+float f = -5.33;
+unsigned int n = static_cast<unsigned int>(static_cast<int>(f));
+
+Another possible solution is to round the floating point number or to compute the floor or ceiling of the floating point number. It always depends on the concrete problem at hand.
+Unfortunately, the compiler cannot help us with finding the problem, because we use an explicit cast here. We basically tell the compiler that we know better what to do. If we had used an implicit conversion
+
+float f = -5.33;
+unsigned int n = f;
+
+and had used the warning option -Wconversion, the compiler would have flagged the problem correctly as Converting to ‘unsigned int’ from ‘float’.
+This is not yet the end of the story. On the project, where we ran into this problem, we were required to follow the Misra-C++ rules. Misra-C++ mandates that dangerous type conversions (loss of precisions when casting from floating-point to integer types is considered dangerous) must be made explicit. So, by following the Misra-C++ rules we deprived us of any help from the compiler.
+We learned our lesson: When you use explicit casts, you are on your own and you better know what you do. Otherwise, you’ll spend quite some time debugging the problem.
